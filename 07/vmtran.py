@@ -6,6 +6,8 @@
 # But then, once we know which one to call, we can pass in the actual
 # raw command string.
 
+# NEXT STEP: Implement arithmetic commands
+
 
 from collections import deque
 import re
@@ -100,7 +102,7 @@ class CodeWriter():
             'that': 'THAT',
             'this': 'THIS',
             # base address of temp is always the same
-            'temp': TEMP_ADDR_OFFSET,
+            'temp': 'temp',
             # segment names don't change/matter
             'constant': 'constant',
             'static': 'static',
@@ -109,29 +111,42 @@ class CodeWriter():
     def write_arithmetic(self, cmd: str) -> None:
         # figure out the assembly to be written and write it to the output file
         # write the raw command as a comment to the file
-        self.output_file.write(self._generate_asm_comment_cmd(cmd)) 
+        # cmd: the full VM command
+        self.output_file.write(self._gen_asm_comment_cmd(cmd))
+        asm_instructions = []
+
+        # this will be for both subtraction and addition
+        op = '+' # or one of [-, |, &]
+        asm_instructions.extend(self._gen_asm_sp_dec())
+        asm_instructions.append('D=M')
+        asm_instructions.extend(self._gen_asm_sp_dec())
+        asm_instructions.append(f'M=D{op}M') # D must come before M for subtraction
+
+        # this will be for inequalities, need labels and jumps here...
+
+
         pass
 
     def write_push_pop(self, cmd: str, segment: str, idx: int) -> None:
         # figure out the assembly to be written and write it to the output file
         # write the raw command as a comment to the file
-        self.output_file.write(self._generate_asm_comment_cmd(cmd)) 
+        self.output_file.write(self._gen_asm_comment_cmd(cmd)) 
         
         if cmd.startswith('pop'):
-            asm_code = '\n'.join(self._generate_asm_pop(cmd, segment, idx))
+            asm_code = '\n'.join(self._gen_asm_pop(cmd, segment, idx))
         elif cmd.startswith('push'):
-            asm_code = '\n'.join(self._generate_asm_push(cmd, segment, idx))
+            asm_code = '\n'.join(self._gen_asm_push(cmd, segment, idx))
         else:
             raise Exception(f"Push pop command not recognized: {cmd}")        
         self.output_file.write(asm_code)
 
 
-    def _generate_asm_pop(self, cmd: str, segment: str, idx: int) -> List[str]:
+    def _gen_asm_pop(self, cmd: str, segment: str, idx: int) -> List[str]:
         """
         Generates the assembly based on the passed in arguments.
 
         - cmd: the full command, such as `pop local 2`
-        - segment: just the segment, such as `local`
+        - segment: just the segment, such as `local`, `argument`, `this`
         - idx: just the index value, such as `2`
 
         Pseudo code for `pop local 2`:
@@ -143,110 +158,128 @@ class CodeWriter():
         Temp requires special treatment (base address is always 5?)
         """
 
-        # Mapping and error handling
         if segment == 'constant':
             raise Exception(f"Can't pop to constant: {cmd}")
 
+        calculate_offset = False
         segment = self._segment_map[segment]
-        if segment in ['LCL', 'ARG', 'THIS', 'THAT', TEMP_ADDR_OFFSET]:
-            addr = '@addr'
+        if segment in ['LCL', 'ARG', 'THIS', 'THAT']:
+            ram_addr = 'A=D'
+            calculate_offset = True
         elif segment == 'static':
-            addr = self._generate_asm_static_var_name(idx)
+            ram_addr = self._gen_asm_static_var_name(idx)
+        elif segment == 'temp':
+            ram_addr = f'@{TEMP_ADDR_OFFSET+idx}'
         else:
             raise Exception(f"Unrecognized segment: {segment}")
 
-        # Build asm
         asm_out = []
-        asm_out.extend(self._generate_asm_address_offset(segment, idx))
-        asm_out.extend(self._generate_asm_sp_dec())
-        asm_out.extend(self._generate_asm_pop_to_addr(addr))
-        # asm_out.append('\n')
+        if calculate_offset:
+            asm_out.extend(self._gen_asm_address_offset_to_D_register(segment, idx))
+        asm_out.extend(self._gen_asm_pop_to_addr(ram_addr))
         return asm_out
 
 
-    def _generate_asm_push(self, cmd: str, segment: str, idx: int) -> List[str]:
+    def _gen_asm_push(self, cmd: str, segment: str, idx: int) -> List[str]:
         """TODO"""
 
-        # Mapping and error handling
+        # TODO: this could be improved / moved to a better location
+        if segment == 'constant':
+            asm = []
+            asm.extend([
+                f"@{idx}",
+                "D=A",
+                "@SP",
+                "A=M",
+                "M=D"
+            ])
+            asm.extend(self._gen_asm_sp_inc())
+            return asm
+
+        calculate_offset = False
         segment = self._segment_map[segment]
-        is_constant = segment == 'constant'
-        if is_constant:
-            addr = f"@{idx}"
-        elif segment in ['LCL', 'ARG', 'THIS', 'THAT', TEMP_ADDR_OFFSET]:
-            addr = '@addr'
+        if segment in ['LCL', 'ARG', 'THIS', 'THAT']:
+            ram_addr = 'A=D'
+            calculate_offset = True
         elif segment == 'static':
-            addr = self._generate_asm_static_var_name(idx)
+            ram_addr = self._gen_asm_static_var_name(idx)
+        elif segment == 'temp':
+            ram_addr = f'@{TEMP_ADDR_OFFSET+idx}'
         else:
             raise Exception(f"Unrecognized segment: {segment}")
         
-        asm_out = []
-        if not is_constant:
-            asm_out.extend(self._generate_asm_address_offset(segment, idx))
-        asm_out.extend(self._generate_asm_push_to_stack(addr, is_constant))
-        asm_out.extend(self._generate_asm_sp_inc())
-        # asm_out.append('\n')
-        return asm_out
+        asm = []
+        if calculate_offset:
+            asm.extend(self._gen_asm_address_offset_to_D_register(segment, idx))
+        asm.extend(self._gen_asm_push_to_stack(ram_addr))
+        return asm
 
 
-    def _generate_asm_address_offset(self, segment: str, idx: int) -> List[str]:
-        """Generates the asm to store the segment address in @addr"""
+    def _gen_asm_address_offset_to_D_register(self, segment: str, idx: int) -> List[str]:
+        """Generates the asm to store the segment address in D register"""
         return [
             "// calculating address offset",
             f"@{segment}",
             "D=M",     # store segment offset in D register
-            "@addr",   # create/select the @addr variable
-            "M=D",     # set @addr to segment offset
             f"@{idx}", # select the index as a constant
-            "D=A",     # store index constant value in data register
-            "@addr",   # select @addr variable
-            "M=D+M",   # add the index offset to @addr, store in @addr
+            "D=D+A",   # D now holds the address we're interested in
             ""
         ]
         
 
-    def _generate_asm_static_var_name(self, idx: int) -> str:
+    def _gen_asm_static_var_name(self, idx: int) -> str:
         return ''.join(['@', self.vm_filename, '.', str(idx)])
 
 
-    def _generate_asm_pop_to_addr(self, addr_var):
+    def _gen_asm_pop_to_addr(self, ram_addr) -> List[str]:
         """
         addr_var is the name of a variable including the '@' symbol.
         """
-        return [
-            f"// popping value to address {addr_var}",
+        asm = []
+        asm.extend(self._gen_asm_sp_dec())
+        asm.extend([
+            f"// popping value to address {ram_addr}",
+            # TODO: something seems wrong here....
+            # store value from stack we want to pop
             "@SP",
-            "D=M",
-            addr_var,
+            "A=M",
+            "M=D",
+            # pop to ram_addr
+            ram_addr,
             "M=D",
             ""
-        ]
+        ])
+        return asm 
 
 
 
-    def _generate_asm_push_to_stack(self, addr_var: str, is_constant = False) -> List[str]:
+    def _gen_asm_push_to_stack(self, ram_addr: str) -> List[str]:
         """
         addr_var is the name of a variable including the '@' symbol.
         You can pass constants in through addr_var as well.
 
         Ex: `push constant 42` can be expressed by `addr_var=@42` and `is_constant=True`
         """
-        from_value = 'A' if is_constant else 'M'
-        return [
-            f"// pushing value to stack from {addr_var}",
-            addr_var,
-            f"D={from_value}",
+        asm = []
+        asm.extend([
+            f"// pushing value to stack from {ram_addr}",
+            ram_addr,
+            "D=M",
             "@SP",
-            "M=D",
-            ""
-        ]
+            "A=M",
+            "M=D"
+        ])
+        asm.extend(self._gen_asm_sp_inc())
+        return asm
+    
 
-    def _generate_asm_sp_dec(self) -> List[str]:
+    def _gen_asm_sp_dec(self) -> List[str]:
         return ['// decrementing stack pointer', '@SP', 'M=M-1', '']
 
-    def _generate_asm_sp_inc(self) -> List[str]:
+    def _gen_asm_sp_inc(self) -> List[str]:
         return ['// incrementing stack pointer', '@SP', 'M=M+1', '']
     
-    def _generate_asm_comment_cmd(self, cmd) -> List[str]:
+    def _gen_asm_comment_cmd(self, cmd) -> List[str]:
         return ' '.join(['\n//', '=' * 20, cmd, '=' * 20, '\n'])
 
     def close(self):
@@ -261,8 +294,9 @@ class Main():
 if __name__ == "__main__":
     logging.debug(f"program arguments: {sys.argv}")
     vm_filename = sys.argv[1]
+    asm_filename = sys.argv[2]
     parser = Parser(vm_filename)
-    writer = CodeWriter(asm_filename='./07/MemoryAccess/BasicTest/BasicTest.asm', vm_filename=vm_filename)
+    writer = CodeWriter(asm_filename=asm_filename, vm_filename=vm_filename)
     print(f"has more commands? {parser.has_more_commands}")
     while parser.has_more_commands:
         parser.advance()
@@ -270,4 +304,5 @@ if __name__ == "__main__":
         print(f"parser command type: {parser.command_type}\targ1: {parser.arg1}\targ2: {parser.arg2}")
         if parser.command_type in ['C_PUSH', 'C_POP']:
             writer.write_push_pop(parser.current_command, parser.arg1, parser.arg2)
+    writer.close()
 
