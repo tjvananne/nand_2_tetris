@@ -143,47 +143,61 @@ class CodeWriter():
 
     def _gen_asm_pop(self, cmd: str, segment: str, idx: int) -> List[str]:
         """
-        Generates the assembly based on the passed in arguments.
-
-        - cmd: the full command, such as `pop local 2`
-        - segment: just the segment, such as `local`, `argument`, `this`
-        - idx: just the index value, such as `2`
-
-        Pseudo code for `pop local 2`:
-        addr=LCL+2, SP--, *addr=*SP
-
-        NOTE: You cannot pop into constant. That wouldn't make sense.
-        LCL, ARG, THIS, THAT all behave the same.
-        Static requires special treatment (store as variable with special name).
-        Temp requires special treatment (base address is always 5?)
+        Generates the assembly based on the passed in arguments
+        Args:
+            - cmd:     the full command, such as `pop local 2`
+            - segment: just the segment, such as `local`, `argument`, `this`
+            - idx:     just the index value, such as `2`
         """
 
         if segment == 'constant':
             raise Exception(f"Can't pop to constant: {cmd}")
 
-        calculate_offset = False
         segment = self._segment_map[segment]
+
         if segment in ['LCL', 'ARG', 'THIS', 'THAT']:
-            ram_addr = 'A=D'
-            calculate_offset = True
-        elif segment == 'static':
-            ram_addr = self._gen_asm_static_var_name(idx)
-        elif segment == 'temp':
-            ram_addr = f'@{TEMP_ADDR_OFFSET+idx}'
+            asm_str = f"""
+                @{segment}
+                D=A
+                @{idx}
+                D=D+A    // D = addr (to pop into)
+                @SP
+                AM=M-1   // decrement stack pointer and follow the pointer
+                D=D+M    // D = addr + value
+                A=D-M    // A = addr
+                M=D-A    // M = value (done!)
+
+            """
+            return [cmd.strip() for cmd in asm_str.split('\n')]
+        
+        elif segment in ['static', 'temp']:
+
+            if segment == 'static':
+                addr = self._gen_asm_static_var_name(idx)
+            elif segment == 'temp':
+                addr = f'@{TEMP_ADDR_OFFSET+idx}'
+            else:
+                raise Exception(f"segment should be either 'static' or 'temp': {segment}")
+            
+            asm_str = f"""
+                {addr}
+                D=A      // D = addr (to pop into)
+                @SP
+                AM=M-1   // decrement stack pointer and follow the pointer
+                D=D+M    // D = addr + value
+                A=D-M    // A = addr
+                M=D-A    // M = value (done!)
+            
+            """
+            return [cmd.strip() for cmd in asm_str.split('\n')]
+
         else:
             raise Exception(f"Unrecognized segment: {segment}")
-
-        asm_out = []
-        if calculate_offset:
-            asm_out.extend(self._gen_asm_address_offset_to_D_register(segment, idx))
-        asm_out.extend(self._gen_asm_pop_to_addr(ram_addr))
-        return asm_out
 
 
     def _gen_asm_push(self, cmd: str, segment: str, idx: int) -> List[str]:
         """TODO"""
 
-        # TODO: this could be improved / moved to a better location
         if segment == 'constant':
             asm = []
             asm.extend([

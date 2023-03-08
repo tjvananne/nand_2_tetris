@@ -10,22 +10,17 @@ M=D
 M=M+1
 
 // ==================== pop local 0 ==================== 
-// calculating address offset
+
 @LCL
-D=M
+D=A
 @0
-D=D+A
-
-// decrementing stack pointer
+D=D+A    // D = addr (to pop into)
 @SP
-M=M-1
+AM=M-1   // decrement stack pointer and follow the pointer
+D=D+M    // D = addr + value
+A=D-M    // A = addr
+M=D-A    // M = value (done!)
 
-// popping value to address A=D
-@SP
-A=M
-D=M
-A=D
-M=D
 
 // ==================== push constant 21 ==================== 
 @21
@@ -48,40 +43,30 @@ M=D
 M=M+1
 
 // ==================== pop argument 2 ==================== 
-// calculating address offset
+
 @ARG
-D=M
+D=A
 @2
-D=D+A
-
-// decrementing stack pointer
+D=D+A    // D = addr (to pop into)
 @SP
-M=M-1
+AM=M-1   // decrement stack pointer and follow the pointer
+D=D+M    // D = addr + value
+A=D-M    // A = addr
+M=D-A    // M = value (done!)
 
-// popping value to address A=D
-@SP
-A=M
-D=M
-A=D
-M=D
 
 // ==================== pop argument 1 ==================== 
-// calculating address offset
+
 @ARG
-D=M
+D=A
 @1
-D=D+A
-
-// decrementing stack pointer
+D=D+A    // D = addr (to pop into)
 @SP
-M=M-1
+AM=M-1   // decrement stack pointer and follow the pointer
+D=D+M    // D = addr + value
+A=D-M    // A = addr
+M=D-A    // M = value (done!)
 
-// popping value to address A=D
-@SP
-A=M
-D=M
-A=D
-M=D
 
 // ==================== push constant 36 ==================== 
 @36
@@ -94,22 +79,17 @@ M=D
 M=M+1
 
 // ==================== pop this 6 ==================== 
-// calculating address offset
+
 @THIS
-D=M
+D=A
 @6
-D=D+A
-
-// decrementing stack pointer
+D=D+A    // D = addr (to pop into)
 @SP
-M=M-1
+AM=M-1   // decrement stack pointer and follow the pointer
+D=D+M    // D = addr + value
+A=D-M    // A = addr
+M=D-A    // M = value (done!)
 
-// popping value to address A=D
-@SP
-A=M
-D=M
-A=D
-M=D
 
 // ==================== push constant 42 ==================== 
 @42
@@ -132,40 +112,30 @@ M=D
 M=M+1
 
 // ==================== pop that 5 ==================== 
-// calculating address offset
+
 @THAT
-D=M
+D=A
 @5
-D=D+A
-
-// decrementing stack pointer
+D=D+A    // D = addr (to pop into)
 @SP
-M=M-1
+AM=M-1   // decrement stack pointer and follow the pointer
+D=D+M    // D = addr + value
+A=D-M    // A = addr
+M=D-A    // M = value (done!)
 
-// popping value to address A=D
-@SP
-A=M
-D=M
-A=D
-M=D
 
 // ==================== pop that 2 ==================== 
-// calculating address offset
+
 @THAT
-D=M
+D=A
 @2
-D=D+A
-
-// decrementing stack pointer
+D=D+A    // D = addr (to pop into)
 @SP
-M=M-1
+AM=M-1   // decrement stack pointer and follow the pointer
+D=D+M    // D = addr + value
+A=D-M    // A = addr
+M=D-A    // M = value (done!)
 
-// popping value to address A=D
-@SP
-A=M
-D=M
-A=D
-M=D
 
 // ==================== push constant 510 ==================== 
 @510
@@ -178,16 +148,15 @@ M=D
 M=M+1
 
 // ==================== pop temp 6 ==================== 
-// decrementing stack pointer
-@SP
-M=M-1
 
-// popping value to address @11
-@SP
-A=M
-D=M
 @11
-M=D
+D=A      // D = addr (to pop into)
+@SP
+AM=M-1   // decrement stack pointer and follow the pointer
+D=D+M    // D = addr + value
+A=D-M    // A = addr
+M=D-A    // M = value (done!)
+
 
 // ==================== push local 0 ==================== 
 // calculating address offset
